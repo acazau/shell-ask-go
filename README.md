@@ -128,7 +128,7 @@ cat main.go | ask explain
 ### Project Structure
 
 ```
-shell-ask/
+shell-ask-go/
 ├── cmd/
 │   └── ask/                 # Application entry point
 ├── internal/
