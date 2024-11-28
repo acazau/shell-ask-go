@@ -39,8 +39,8 @@ go install github.com/acazau/shell-ask-go/cmd/ask@latest
 ### Building from source
 
 ```bash
-git clone https://github.com/acazau/shell-ask.git
-cd shell-ask
+git clone https://github.com/acazau/shell-ask-go.git
+cd shell-ask-go
 go build -o ask cmd/ask/main.go
 ```
 
