@@ -44,34 +44,69 @@ var ModelMap = map[string][]ModelInfo{
 		{ID: "groq-mixtral", RealID: "mixtral-8x7b-32768"},
 		{ID: "groq-gemma", RealID: "gemma-7b-it"},
 	},
+	"copilot": {
+		{ID: "copilot-chat", Description: "GitHub Copilot Chat"},
+	},
+	"ollama": {}, // Will be populated dynamically
 }
 
-// GetAllModels returns all available models, optionally including Ollama models
+// SelectModel selects a model based on input or returns default
+func SelectModel(input string) string {
+	// Check if it's an Ollama model format (contains ":")
+	if strings.Contains(input, ":") && ValidateOllamaModel(input) {
+		return input // Return as-is for valid Ollama models
+	}
+
+	// Check direct model ID match
+	for _, models := range ModelMap {
+		for _, model := range models {
+			if model.ID == input {
+				if model.RealID != "" {
+					return model.RealID
+				}
+				return model.ID
+			}
+		}
+	}
+
+	// Check provider match
+	if models, exists := ModelMap[input]; exists && len(models) > 0 {
+		if models[0].RealID != "" {
+			return models[0].RealID
+		}
+		return models[0].ID
+	}
+
+	return "gpt-4o-mini" // default model
+}
+
+func ValidateOllamaModel(name string) bool {
+	// Basic validation for Ollama model format (name:tag)
+	parts := strings.Split(name, ":")
+	return len(parts) == 2 && len(parts[0]) > 0 && len(parts[1]) > 0
+}
+
 func GetAllModels(includeOllama bool) []ModelInfo {
 	var allModels []ModelInfo
-
-	// Add all models from ModelMap
 	for _, models := range ModelMap {
 		allModels = append(allModels, models...)
 	}
 
-	// Add Ollama models if requested
 	if includeOllama {
 		ollamaModels, err := GetOllamaModels()
 		if err == nil {
 			allModels = append(allModels, ollamaModels...)
+			// Update the ollama section of ModelMap
+			ModelMap["ollama"] = ollamaModels
 		}
 	}
 
-	// Sort models by ID for consistent ordering
 	sort.Slice(allModels, func(i, j int) bool {
 		return allModels[i].ID < allModels[j].ID
 	})
-
 	return allModels
 }
 
-// GetCheapModel returns a cheaper alternative for expensive models
 func GetCheapModel(modelID string) string {
 	switch {
 	case strings.HasPrefix(modelID, "gpt-4"):
@@ -82,25 +117,16 @@ func GetCheapModel(modelID string) string {
 		return "gemini-pro"
 	case strings.HasPrefix(modelID, "groq-llama3"):
 		return "groq-gemma"
+	case strings.Contains(modelID, ":"):
+		// For Ollama models, return the smallest available model
+		models, err := GetOllamaModels()
+		if err == nil && len(models) > 0 {
+			return models[0].ID // Return the first available model
+		}
+		return modelID
 	default:
 		return modelID
 	}
-}
-
-func GetModels() ([]ModelInfo, error) {
-	models := []ModelInfo{
-		{
-			Name:        "gpt-4",
-			Description: "Most capable GPT-4 model",
-			Family:      "GPT-4",
-		},
-		{
-			Name:        "gpt-3.5-turbo",
-			Description: "Most capable GPT-3.5 model",
-			Family:      "GPT-3.5",
-		},
-	}
-	return models, nil
 }
 
 func GetOllamaModels() ([]ModelInfo, error) {
@@ -115,10 +141,48 @@ func GetOllamaModels() ([]ModelInfo, error) {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	var models Models
-	if err := json.Unmarshal(body, &models); err != nil {
+	var result struct {
+		Models []struct {
+			Name    string `json:"name"`
+			Details string `json:"details"`
+		} `json:"models"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	return models.Models, nil
+	var models []ModelInfo
+	for _, m := range result.Models {
+		models = append(models, ModelInfo{
+			ID:          m.Name,
+			Name:        m.Name,
+			Description: m.Details,
+			Family:      "ollama",
+		})
+	}
+
+	return models, nil
+}
+
+func GetModelInfo(name string) *ModelInfo {
+	// First check predefined models
+	for _, mi := range ModelMap {
+		for _, model := range mi {
+			if model.Name == name {
+				return &model
+			}
+		}
+	}
+
+	// If it looks like an Ollama model, try to validate it
+	if strings.Contains(name, ":") && ValidateOllamaModel(name) {
+		return &ModelInfo{
+			ID:     name,
+			Name:   name,
+			Family: "ollama",
+		}
+	}
+
+	return nil
 }

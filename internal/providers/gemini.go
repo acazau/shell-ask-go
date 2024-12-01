@@ -1,80 +1,47 @@
-// internal/providers/gemini.go
 package providers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
+
+	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/api/option"
 )
 
 type GeminiProvider struct {
-	apiKey  string
-	model   string
-	baseURL string
+	client *genai.Client
+	model  string
 }
 
-func NewGeminiProvider(apiKey, model, baseURL string) *GeminiProvider {
-	if baseURL == "" {
-		baseURL = "https://generativelanguage.googleapis.com/v1"
+func NewGeminiProvider(apiKey, model string) (*GeminiProvider, error) {
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+	if err != nil {
+		return nil, err
 	}
+
 	return &GeminiProvider{
-		apiKey:  apiKey,
-		model:   model,
-		baseURL: baseURL,
-	}
-}
-
-type geminiRequest struct {
-	Contents []geminiContent `json:"contents"`
-}
-
-type geminiContent struct {
-	Parts []geminiPart `json:"parts"`
-}
-
-type geminiPart struct {
-	Text string `json:"text"`
+		client: client,
+		model:  model,
+	}, nil
 }
 
 func (p *GeminiProvider) Complete(ctx context.Context, prompt string, stream bool) (io.ReadCloser, error) {
-	reqBody := geminiRequest{
-		Contents: []geminiContent{
-			{
-				Parts: []geminiPart{
-					{Text: prompt},
-				},
-			},
-		},
-	}
+	model := p.client.GenerativeModel(p.model)
 
-	body, err := json.Marshal(reqBody)
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		return nil, err
 	}
 
-	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", p.baseURL, p.model, p.apiKey)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, err
+	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
+		return nil, fmt.Errorf("no content returned from Gemini API")
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return nil, fmt.Errorf("gemini API error: %s", resp.Status)
-	}
-
-	return resp.Body, nil
+	text := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
+	return io.NopCloser(strings.NewReader(text)), nil
 }
 
 func (p *GeminiProvider) Name() string {

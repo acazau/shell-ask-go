@@ -33,7 +33,7 @@ A powerful command-line interface tool written in Go for interacting with variou
 ### Using go install
 
 ```bash
-go install github.com/acazau/shell-ask-go/cmd/ask@latest
+go install github.com/acazau/acazau/cmd/ask@latest
 ```
 
 ### Building from source
@@ -46,7 +46,7 @@ go build -o ask cmd/ask/main.go
 
 ## Configuration
 
-Create a configuration file at `~/.config/shell-ask-go/config.json`:
+Create a configuration file at `~/.config/acazau/config.json`:
 
 ```json
 {
@@ -153,7 +153,7 @@ go test ./...
 ### Building with Version Information
 
 ```bash
-go build -ldflags "-X github.com/acazau/shell-ask-go/pkg/version.Version=1.0.0 -X github.com/acazau/shell-ask-go/pkg/version.GitCommit=$(git rev-parse HEAD)" ./cmd/ask
+go build -ldflags "-X github.com/acazau/acazau/pkg/version.Version=1.0.0 -X github.com/acazau/acazau/pkg/version.GitCommit=$(git rev-parse HEAD)" ./cmd/ask
 ```
 
 ## Contributing

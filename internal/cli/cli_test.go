@@ -2,6 +2,7 @@ package cli
 
 import (
 	"testing"
+
 	"github.com/acazau/shell-ask-go/internal/config"
 )
 
@@ -29,4 +30,3 @@ func TestRootCmd(t *testing.T) {
 		t.Errorf("Expected root command, got nil")
 	}
 }
-

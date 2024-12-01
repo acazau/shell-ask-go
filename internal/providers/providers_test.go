@@ -6,7 +6,10 @@ import (
 )
 
 func TestOpenAIProvider(t *testing.T) {
-	provider := NewOpenAIProvider("test-key", "gpt-4")
+	provider, err := NewOpenAIProvider("test-key", "gpt-4")
+	if err != nil {
+		t.Fatalf("failed to create OpenAI provider: %v", err)
+	}
 	if provider.Name() != "openai" {
 		t.Errorf("expected provider name openai, got %s", provider.Name())
 	}

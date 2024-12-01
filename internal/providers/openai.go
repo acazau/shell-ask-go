@@ -1,4 +1,3 @@
-// internal/providers/openai.go
 package providers
 
 import (
@@ -7,7 +6,8 @@ import (
 	"io"
 	"strings"
 
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 )
 
 type OpenAIProvider struct {
@@ -15,26 +15,19 @@ type OpenAIProvider struct {
 	model  string
 }
 
-func NewOpenAIProvider(apiKey string, model string) *OpenAIProvider {
+func NewOpenAIProvider(apiKey string, model string) (*OpenAIProvider, error) {
+	client := openai.NewClient(option.WithAPIKey(apiKey))
 	return &OpenAIProvider{
-		client: openai.NewClient(apiKey),
+		client: client,
 		model:  model,
-	}
+	}, nil
 }
 
 func (p *OpenAIProvider) Complete(ctx context.Context, prompt string, stream bool) (io.ReadCloser, error) {
 	if stream {
-		reader, err := p.streamCompletion(ctx, prompt)
-		if err != nil {
-			return nil, err
-		}
-		return reader, nil
+		return p.streamCompletion(ctx, prompt)
 	}
-	reader, err := p.completion(ctx, prompt)
-	if err != nil {
-		return nil, err
-	}
-	return reader, nil
+	return p.completion(ctx, prompt)
 }
 
 func (p *OpenAIProvider) Name() string {
@@ -42,61 +35,39 @@ func (p *OpenAIProvider) Name() string {
 }
 
 func (p *OpenAIProvider) streamCompletion(ctx context.Context, prompt string) (io.ReadCloser, error) {
-	stream, err := p.client.CreateChatCompletionStream(
-		ctx,
-		openai.ChatCompletionRequest{
-			Model: p.model,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: prompt,
-				},
-			},
-		},
-	)
-	if err != nil {
+	var output strings.Builder
+
+	stream := p.client.Chat.Completions.NewStreaming(ctx, openai.ChatCompletionNewParams{
+		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(prompt),
+		}),
+		Model: openai.F(p.model),
+	})
+
+	for stream.Next() {
+		evt := stream.Current()
+		if len(evt.Choices) > 0 {
+			output.WriteString(evt.Choices[0].Delta.Content)
+		}
+	}
+
+	if err := stream.Err(); err != nil {
 		return nil, fmt.Errorf("stream completion error: %w", err)
 	}
-	defer stream.Close()
 
-	pr, pw := io.Pipe()
-	go func() {
-		defer pw.Close()
-		var result strings.Builder
-		for {
-			response, err := stream.Recv()
-			if err != nil {
-				return
-			}
-			result.WriteString(response.Choices[0].Delta.Content)
-			_, _ = pw.Write([]byte(response.Choices[0].Delta.Content))
-		}
-	}()
-	return pr, nil
+	return io.NopCloser(strings.NewReader(output.String())), nil
 }
 
 func (p *OpenAIProvider) completion(ctx context.Context, prompt string) (io.ReadCloser, error) {
-	resp, err := p.client.CreateChatCompletion(
-		ctx,
-		openai.ChatCompletionRequest{
-			Model: p.model,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: prompt,
-				},
-			},
-		},
-	)
+	completion, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(prompt),
+		}),
+		Model: openai.F(p.model),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("completion error: %w", err)
 	}
 
-	content := resp.Choices[0].Message.Content
-	pr, pw := io.Pipe()
-	go func() {
-		defer pw.Close()
-		_, _ = pw.Write([]byte(content))
-	}()
-	return pr, nil
+	return io.NopCloser(strings.NewReader(completion.Choices[0].Message.Content)), nil
 }

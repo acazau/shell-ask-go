@@ -6,17 +6,19 @@ import (
 
 func TestSelectModel(t *testing.T) {
 	tests := []struct {
-		input    string
-		expected string
+		input string
+		want  string
 	}{
 		{"openai", "gpt-4"},
-		{"other", "default-model"},
+		{"other", "gpt-3.5-turbo"},
 	}
 
-	for _, test := range tests {
-		result := SelectModel(test.input)
-		if result != test.expected {
-			t.Errorf("SelectModel(%q) = %q, want %q", test.input, result, test.expected)
-		}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := SelectModel(tt.input)
+			if got != tt.want {
+				t.Errorf("SelectModel(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }

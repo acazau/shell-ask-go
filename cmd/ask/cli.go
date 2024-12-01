@@ -1,5 +1,5 @@
-// internal/cli/cli.go
-package cli
+// cmd/ask/cli.go
+package main
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/acazau/shell-ask-go/internal/models"
 	"github.com/acazau/shell-ask-go/internal/providers"
 	"github.com/acazau/shell-ask-go/pkg/utils"
-	"github.com/spf13/cobra" // Replace with the correct import
+	"github.com/spf13/cobra"
 )
 
 type CLI struct {
@@ -60,16 +60,14 @@ func (cli *CLI) handleAsk(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("please provide a prompt")
 	}
 
-	// Get model
 	model, _ := cmd.Flags().GetString("model")
 	if model == "" {
 		model = cli.config.DefaultModel
 		if model == "" {
-			model = "gpt-4" // Default model
+			model = "gpt-4o-mini"
 		}
 	}
 
-	// Get prompt
 	prompt := strings.Join(args, " ")
 	if pipeInput, err := utils.ReadPipe(); err != nil {
 		return err
@@ -77,61 +75,26 @@ func (cli *CLI) handleAsk(cmd *cobra.Command, args []string) error {
 		prompt = fmt.Sprintf("%s\nInput:\n%s", prompt, pipeInput)
 	}
 
-	// Setup provider
 	provider, err := cli.getProvider(model)
 	if err != nil {
 		return err
 	}
 
-	// Handle flags
 	noStream, _ := cmd.Flags().GetBool("no-stream")
 	commandOnly, _ := cmd.Flags().GetBool("command")
 	if commandOnly {
 		prompt += "\nReturn the command only without any other text."
 	}
 
-	// Process request
 	return cli.processRequest(cmd.Context(), provider, prompt, !noStream)
 }
 
-// In cli.go, modify getProvider:
-func askYesNo(prompt string) (bool, error) {
-	fmt.Println(prompt + " [y/n]")
-	var response string
-	_, err := fmt.Scanln(&response)
-	if err != nil {
-		return false, err
-	}
-	response = strings.ToLower(response)
-	switch response {
-	case "y", "yes":
-		return true, nil
-	case "n", "no":
-		return false, nil
-	default:
-		fmt.Println("Invalid input. Please enter 'y' or 'n'.")
-		return askYesNo(prompt)
-	}
-}
-
 func (cli *CLI) getProvider(modelID string) (providers.Provider, error) {
-	if modelID == "" {
-		// Use selectOption when no model is specified
-		modelID = selectOption("Select a model:", cli.config.AvailableModels)
-	}
-
 	model := models.SelectModel(modelID)
 	switch {
 	case strings.HasPrefix(model, "gpt"):
 		return providers.NewOpenAIProvider(cli.config.OpenAIKey, model)
 	case strings.HasPrefix(model, "claude"):
-		confirmed, err := askYesNo(fmt.Sprintf("Use %s model?", model))
-		if err != nil {
-			return nil, err
-		}
-		if !confirmed {
-			return nil, fmt.Errorf("model selection cancelled")
-		}
 		return providers.NewAnthropicProvider(cli.config.AnthropicKey, model), nil
 	default:
 		return nil, fmt.Errorf("unsupported model: %s", model)
@@ -169,7 +132,7 @@ func (cli *CLI) addBuiltinCommands() {
 
 func (cli *CLI) addCustomCommands() {
 	for _, cmd := range cli.config.Commands {
-		c := cmd // Create a new variable to avoid closure problems
+		c := cmd
 		customCmd := &cobra.Command{
 			Use:     c.Name,
 			Short:   c.Description,
@@ -183,15 +146,4 @@ func (cli *CLI) addCustomCommands() {
 		}
 		cli.rootCmd.AddCommand(customCmd)
 	}
-}
-
-// Execute initializes and runs the CLI
-func Execute() error {
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-
-	cli := NewCLI(cfg)
-	return cli.Execute()
 }
